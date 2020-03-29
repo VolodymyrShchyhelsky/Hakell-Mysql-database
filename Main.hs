@@ -164,22 +164,26 @@ instance TableHolder RoomsTable where
 -------------------- LESSONS TABLE
 changeLessonsTable :: [String] -> MySQLConn -> String -> IO Bool
 changeLessonsTable values conn id = do
-      let teacher_id_q = "SELECT teacher_id FROM faculty_classes WHERE class_id = " ++ (values !! 0)
+      let teacher_id_q = "SELECT teacher_id FROM faculty_classes WHERE id = " ++ (values !! 0)
       (c, r_io) <- query_ conn (DataString.fromString $ teacher_id_q)
       r <- Streams.toList r_io
-      let teacher_id = (getRowsValues r) !! 0 !! 0
-      let id_check = (get_id_check id)
-      let count_q = "SELECT COUNT(*) = 0 FROM lessons \
-                        \JOIN faculty_classes ON lessons.class_id = faculty_classes.class_id \
-                        \AND faculty_classes.teacher_id = " ++ teacher_id ++ "AND day_of_week = " ++ (values !! 2) ++ " AND time_slot = " ++ (values !! 3) ++ id_check
-      (c, r_io) <- query_ conn (DataString.fromString $ count_q)
-      r <- Streams.toList r_io
-      let answer = (getRowsValues r) !! 0 !! 0 
-      print "ANSWER"
-      print answer
-      if answer == "False"
-            then return False
-            else return True
+      if length r == 0
+            then return True
+            else do
+                  let teacher_id = (getRowsValues r) !! 0 !! 0
+                  let id_check = (get_id_check id)
+                  let count_q = "SELECT COUNT(*) FROM lessons \
+                                    \JOIN faculty_classes ON lessons.class_id = faculty_classes.id \
+                                    \AND faculty_classes.teacher_id = " ++ teacher_id ++ " AND day_of_week = " ++ (values !! 2) ++ " AND time_slot = " ++ (values !! 3) ++ id_check
+                  
+                  (c, r_io) <- query_ conn (DataString.fromString $ count_q)
+                  r <- Streams.toList r_io
+                  let answer = (getRowsValues r) !! 0 !! 0 
+                  if answer /= "0"
+                        then do
+                              print "Sorry there is another lesson in the same time with this teacher"
+                              return False
+                        else return True
 
 data LessonsTable = LessonsTable 
       { lessons_table_data :: Table
@@ -191,9 +195,8 @@ instance TableHolder LessonsTable where
       checkUpdateValues t values conn id = (changeLessonsTable values conn id)
       checkInsertValues t values conn = (changeLessonsTable values conn "")
 
-      prepareValuesToQuery t values = upd_values
-            where upd_values = (replaceNth 2 values1)
-                  values1 = (replaceNth 3 values)
+      prepareValuesToQuery t values = (replaceNth 2 values1)
+            where values1 = (replaceNth 3 values)
 
       printEnums t = do
             putStrLn "day_of_week enums : Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday"
@@ -239,7 +242,7 @@ instance TableHolder FacultyClassesTable where
                                           \(SELECT class_id, day_of_week, time_slot FROM lessons \
                                           \WHERE class_id = " ++ id ++ " UNION \
                                           \(SELECT lessons.class_id, day_of_week, time_slot FROM lessons \
-                                          \JOIN faculty_classes ON lessons.class_id = faculty_classes.class_id AND teacher_id = " ++ (values !! 0) ++ ")) \
+                                          \JOIN faculty_classes ON lessons.class_id = faculty_classes.id AND teacher_id = " ++ (values !! 0) ++ ")) \
                                           \all_lessons GROUP BY time_slot, day_of_week) lessons_at_the_same_time_count \
                                           \WHERE lessons_at_the_same_time > 1"
             (c, r_io) <- query_ conn (DataString.fromString $ teacher_lesson_count_q)
@@ -274,26 +277,29 @@ instance TableHolder UserToLessonTable where
       checkUpdateValues t values conn id = (checkInsertValues t values conn)
 
       checkInsertValues t values conn = do
-            let lesson_room_id_q = "SELECT classroom_id FROM lessons WHERE lesson_id = " ++ (values !! 0)
+            let lesson_room_id_q = "SELECT room_id FROM lessons WHERE id = " ++ (values !! 0)
             (c, r_io) <- query_ conn (DataString.fromString $ lesson_room_id_q)
             r <- Streams.toList r_io
             let lesson_room_id = (getRowsValues r) !! 0 !! 0
-            let seet_room_id_q = "SELECT classroom_id FROM seats WHERE seat_id = " ++ (values !! 2)
+            let seet_room_id_q = "SELECT room_id FROM seats WHERE id = " ++ (values !! 2)
             (c, r_io) <- query_ conn (DataString.fromString $ seet_room_id_q)
             r <- Streams.toList r_io
             let seet_room_id = (getRowsValues r) !! 0 !! 0
-            if lesson_room_id_q /= seet_room_id_q
+            print "ROOMS IDS"
+            print lesson_room_id
+            print seet_room_id
+            if lesson_room_id /= seet_room_id
                   then do
                         print "ERROR: The seat is not in the room where the lesson takes place."
                         return False
                   else do
                         let is_user_have_another_lesson_q = "SELECT COUNT(*) = 0 FROM \
                                                 \(SELECT day_of_week, time_slot FROM users_to_lessons \
-                                                \JOIN lessons ON users_to_lessons.lesson_id = lessons.lesson_id \
+                                                \JOIN lessons ON users_to_lessons.lesson_id = lessons.id \
                                                 \WHERE users_to_lessons.user_id = " ++ (values !! 1) ++ ") AS busy_time \
                                                 \JOIN \
                                                 \(SELECT day_of_week, time_slot FROM lessons \
-                                                \WHERE lessons.lesson_id = " ++ (values !! 0) ++ ") AS new_lesson \
+                                                \WHERE lessons.id = " ++ (values !! 0) ++ ") AS new_lesson \
                                                 \ON busy_time.day_of_week = new_lesson.day_of_week AND busy_time.time_slot = new_lesson.time_slot" 
                         (c, r_io) <- query_ conn (DataString.fromString $ is_user_have_another_lesson_q)
                         r <- Streams.toList r_io
