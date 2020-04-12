@@ -1,2 +1,10 @@
 # Hakell-Mysql-database
-Execution file: dist-newstyle\build\x86_64-windows\ghc-8.6.5\Lab2-0.1.0.0\x\Lab2\build\Lab2\Lab2.exe
+Compilation: <br>
+cabal install --only-dependencies <br>
+cabal new-configure --enable-tests <br>
+cabal new-build <br>
+For test running: <br>
+cabal new-test <br>
+For execution: <br>
+cabal run <br>
+
